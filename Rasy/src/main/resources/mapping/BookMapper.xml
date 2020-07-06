@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.su.mapper.IBookMapper">
+    <!--分页查询做的书-->
+    <select id="getAllBook" resultType="com.feng.su.entity.Book">
+        SELECT a.book_id,
+        CASE
+        WHEN length(trim(a.book_name))>60 THEN
+            concat(substr(trim(a.book_name), 1,4),'*',substr(trim(a.book_name), -4))
+        WHEN length(trim(a.book_name))>42 THEN
+            concat(substr(trim(a.book_name),1,2),'*',substr(trim(a.book_name),-2))
+        WHEN length(trim(a.book_name))>21 THEN
+            concat(substr(trim(a.book_name), 1,2),'*',substr(trim(a.book_name), -2))
+        ELSE
+            concat(substr(trim(a.book_name), 1,1),'*',substr(trim(a.book_name), -1))
+        END AS  book_name,
+        a.book_type,
+        a.print_num,
+        a.adviser_id,
+        if(LENGTH(trim(b.`NAME`))>6,concat(substr(trim(b.`NAME`), 1,1),'*',substr(trim(b.`NAME`), -1)),concat('*',substr(trim(b.`NAME`), -1)))  adviser_name,
+        c.name agent_name,
+        a.confirm_time
+        FROM 1_2020_createdbook a
+        LEFT JOIN 1_rays_adviser b on a.adviser_id = b.ADVISER_ID
+        LEFT JOIN 1_rays_agent c on a.agent_id  =c.AGENT_ID
+        where a.confirm_time between '2020-05-01' and '2020-06-01'
+        ORDER BY a.confirm_time limit #{startIndex},#{pageSize}
+    </select>
+    <!--做书的数量-->
+    <select id="getBookCount" resultType="java.lang.Integer">
+        SELECT count(1)
+        FROM 1_2020_createdbook a
+        LEFT JOIN 1_rays_adviser b on a.adviser_id = b.ADVISER_ID
+        LEFT JOIN 1_rays_agent c on a.agent_id  =c.AGENT_ID
+        where a.confirm_time between '2020-05-01' and '2020-06-01'
+    </select>
+    <select id="getOrderByYear" resultType="com.feng.su.entity.ItemMoney">
+            select year,month,sum(gmv) as gmv,sum(count) as count from 2018_order_book GROUP BY year,month  union SELECT year,month,sum(gmv) as gmv,sum(count) as count from 2019_order_book GROUP BY year,month union SELECT year,month,sum(gmv) as gmv,sum(count) as count from 2020_order_book GROUP BY year,month order by year,month
+    </select>
+    <select id="getOrderByYearCount" resultType="java.lang.Integer">
+            select count(1) from (select year,month,sum(gmv) as gmv,sum(count) as count from 2018_order_book GROUP BY year,month  union SELECT year,month,sum(gmv) as gmv,sum(count) as count from 2019_order_book GROUP BY year,month union SELECT year,month,sum(gmv) as gmv,sum(count) as count from 2020_order_book GROUP BY year,month order by year,month) t
+    </select>
+    <select id="getBalance" resultType="com.feng.su.entity.FourBalance">
+        SELECT
+        a.`year` ,
+        a.month ,
+        a.ADVISER_ID ,
+        if(LENGTH(trim(b.`NAME`))>6,concat(substr(trim(b.`NAME`), 1,1),'*',substr(trim(b.`NAME`), -1)),concat('*',substr(trim(b.`NAME`), -1))) adviser_name,
+        a.bianji adviser_fee,
+        a.zuozhe author_fee,
+        a.yanfa develop_fee,
+        a.hongbang red_fee,
+        a.total total_fee,
+        c.name agent_name    from (
+        SELECT
+        ADVISER_ID,
+        FLOOR((report_time_id-27)/12) + 2018 year,
+        (report_time_id-27)%12 + 1 month,
+        report_time_id,
+        sum(IF(cost_type = 1, redpack_money, 0)) bianji,
+        sum(IF(cost_type = 2, redpack_money, 0)) zuozhe,
+        sum(IF(cost_type = 3, redpack_money, 0)) hongbang,
+        sum(IF(cost_type = 5, redpack_money, 0)) yanfa,
+        sum(redpack_money) total
+        from 1_finance_adviser_cost
+        WHERE cost_type in (1,2,3,5) and report_time_id =55
+        GROUP BY ADVISER_ID, report_time_id
+        ORDER BY report_time_id
+        ) a
+        LEFT JOIN 1_rays_adviser b on a.ADVISER_ID = b.ADVISER_ID
+        LEFT JOIN 1_rays_agent c on b.AGENT_ID = c.AGENT_ID
+    </select>
+    <select id="getBalanceCount" resultType="java.lang.Integer">
+         SELECT
+       count(1)  from (
+        SELECT
+        ADVISER_ID,
+        FLOOR((report_time_id-27)/12) + 2018 year,
+        (report_time_id-27)%12 + 1 month,
+        report_time_id,
+        sum(IF(cost_type = 1, redpack_money, 0)) bianji,
+        sum(IF(cost_type = 2, redpack_money, 0)) zuozhe,
+        sum(IF(cost_type = 3, redpack_money, 0)) hongbang,
+        sum(IF(cost_type = 5, redpack_money, 0)) yanfa,
+        sum(redpack_money) total
+        from 1_finance_adviser_cost
+        WHERE cost_type in (1,2,3,5) and report_time_id =55
+        GROUP BY ADVISER_ID, report_time_id
+        ORDER BY report_time_id
+        ) a
+        LEFT JOIN 1_rays_adviser b on a.ADVISER_ID = b.ADVISER_ID
+        LEFT JOIN 1_rays_agent c on b.AGENT_ID = c.AGENT_ID
+    </select>
+    <select id="getBookTypeGMV" resultType="com.feng.su.entity.BookTypeGMV">
+        select
+        f.TYPE_NAME book_type,
+        a.gmv reader_gmv,
+        CONCAT(TRUNCATE(a.gmv/d.gmv*100,2),'%') reader_gmv_percent,
+        b.gmv-a.gmv content_gmv,
+        CONCAT(TRUNCATE((b.gmv-a.gmv)/d.gmv*100,2),'%') content_gmv_percent,
+        b.bookcounts book_count,
+        ifnull(c.printnum,0) print_num
+        from (
+
+        select book_type_id ,sum(gmv)gmv from 2020_order_group_book a left join 1_rays_book b on a.book_id=b.book_id
+        where a.book_id>0 and  (year=2020 and month=5)
+        group by b.book_type_id
+        )a left join (
+        select book_type_id,sum(gmv)gmv,count(DISTINCT a.book_id) bookcounts from 2020_order_book a left join 1_rays_book b on a.book_id=b.book_id
+        where a.book_id>0 and  (year=2020 and month=5)
+        group by b.book_type_id)
+        b on a.book_type_id =b.book_type_id
+        left join(
+        select book_type_id ,sum(a.print_num) printnum from 2020_book_print_tmp_final a left join 1_rays_book b  on a.book_id=b.book_id
+        where a.book_id in(select book_id from 2020_order_book  where (year=2020 and month=5) )
+        group by b.book_type_id
+        )c on a.book_type_id=c.book_type_id
+        LEFT JOIN 1_rays_book_type f on a.book_type_id = f.id
+        ,(select sum(gmv)gmv from 2020_order_book where (year=2020 and month=5) )d
+    </select>
+    <select id="getBookTypeGMVCount" resultType="java.lang.Integer">
+        select
+         count(1)
+        from (
+
+        select book_type_id ,sum(gmv)gmv from 2020_order_group_book a left join 1_rays_book b on a.book_id=b.book_id
+        where a.book_id>0 and  (year=2020 and month=5)
+        group by b.book_type_id
+        )a left join (
+        select book_type_id,sum(gmv)gmv,count(DISTINCT a.book_id) bookcounts from 2020_order_book a left join 1_rays_book b on a.book_id=b.book_id
+        where a.book_id>0 and  (year=2020 and month=5)
+        group by b.book_type_id)
+        b on a.book_type_id =b.book_type_id
+        left join(
+        select book_type_id ,sum(a.print_num) printnum from 2020_book_print_tmp_final a left join 1_rays_book b  on a.book_id=b.book_id
+        where a.book_id in(select book_id from 2020_order_book  where (year=2020 and month=5) )
+        group by b.book_type_id
+        )c on a.book_type_id=c.book_type_id
+        LEFT JOIN 1_rays_book_type f on a.book_type_id = f.id
+        ,(select sum(gmv)gmv from 2020_order_book where (year=2020 and month=5) )d
+    </select>
+    <select id="getGMVBook" resultType="com.feng.su.entity.GMVBook">
+            select b.book_id,
+              CASE
+            WHEN length(trim(book_name))>60 THEN
+                concat(substr(trim(book_name), 1,4),'*',substr(trim(book_name), -4))
+            WHEN length(trim(book_name))>42 THEN
+                concat(substr(trim(book_name), 1,2),'*',substr(trim(book_name), -2))
+            WHEN length(trim(book_name))>21 THEN
+                concat(substr(trim(book_name), 1,2),'*',substr(trim(book_name), -2))
+            ELSE
+                concat(substr(trim(book_name), 1,1),'*',substr(trim(book_name), -1))
+            END AS  book_name,
+            f.TYPE_NAME book_type,
+             ifnull(e.PRINT_NUM,b.PRINT_NUM) print_num,
+            d.`NAME` agent_name,
+            c.adviser_id adviser_id,
+            if(LENGTH(trim(c.`NAME`))>6,concat(substr(trim(c.`NAME`), 1,1),'*',substr(trim(c.`NAME`), -1)),concat('*',substr(trim(c.`NAME`), -1)))   adviser_name,
+            a.gmv
+             from (
+            SELECT sum(gmv) gmv, book_id, ADVISER_ID from 2020_order_book where book_id > 0 and
+
+              (year = 2020 and month=5)
+             GROUP BY book_id ORDER BY gmv desc
+            ) a
+            LEFT JOIN 1_rays_book b on  a.book_id = b.book_id
+            LEFT JOIN 1_rays_adviser  c on b.ADVISER_ID = c.ADVISER_ID
+            LEFT JOIN 1_rays_agent d on c.AGENT_ID = d.AGENT_ID
+            LEFT JOIN (
+             SELECT book_id, sum(print_num) print_num from 2020_book_print_num GROUP BY book_id
+            ) e on a.book_id = e.book_id
+            LEFT JOIN 1_rays_book_type f on b.book_type_id = f.id
+            order by a.gmv desc;
+    </select>
+    <select id="getGMVBookCount" resultType="java.lang.Integer">
+           select count(1) from (SELECT b.book_id,
+              CASE
+            WHEN length(trim(book_name))>60 THEN
+                concat(substr(trim(book_name), 1,4),'*',substr(trim(book_name), -4))
+            WHEN length(trim(book_name))>42 THEN
+                concat(substr(trim(book_name), 1,2),'*',substr(trim(book_name), -2))
+            WHEN length(trim(book_name))>21 THEN
+                concat(substr(trim(book_name), 1,2),'*',substr(trim(book_name), -2))
+            ELSE
+                concat(substr(trim(book_name), 1,1),'*',substr(trim(book_name), -1))
+            END AS  book_name,
+            f.TYPE_NAME book_type,
+             ifnull(e.PRINT_NUM,b.PRINT_NUM) print_num,
+            d.`NAME` agent_name,
+            c.adviser_id adviser_id,
+            if(LENGTH(trim(c.`NAME`))>6,concat(substr(trim(c.`NAME`), 1,1),'*',substr(trim(c.`NAME`), -1)),concat('*',substr(trim(c.`NAME`), -1)))   adviser_name,
+            a.gmv
+             from (
+            SELECT sum(gmv) gmv, book_id, ADVISER_ID from 2020_order_book where book_id > 0 and
+
+              (year = 2020 and month=5)
+             GROUP BY book_id ORDER BY gmv desc
+            ) a
+            LEFT JOIN 1_rays_book b on  a.book_id = b.book_id
+            LEFT JOIN 1_rays_adviser  c on b.ADVISER_ID = c.ADVISER_ID
+            LEFT JOIN 1_rays_agent d on c.AGENT_ID = d.AGENT_ID
+            LEFT JOIN (
+             SELECT book_id, sum(print_num) print_num from 2020_book_print_num GROUP BY book_id
+            ) e on a.book_id = e.book_id
+            LEFT JOIN 1_rays_book_type f on b.book_type_id = f.id
+            order by a.gmv desc) t;
+    </select>
+    <select id="getProGMV" resultType="com.feng.su.entity.ProductGMV">
+        SELECT g.pro_type_id , t.TYPE_NAME , round(sum(gmv) * 100 /425601368.41 , 2) rate , min(min_price) min_price , max(max_price) max_price
+        FROM 2020_pro_type_gmv g LEFT JOIN 1_rays_product_type t
+        ON g.pro_type_id = t.ID
+        WHERE (g.year=2020 and g.month =5)
+        GROUP BY pro_type_id ORDER BY rate DESC;
+    </select>
+    <select id="getProGMVCount" resultType="java.lang.Integer">
+        SELECT count(1) FROM (SELECT g.pro_type_id , t.TYPE_NAME , round(sum(gmv) * 100 /425601368.41 , 2) rate , min(min_price) min_price , max(max_price) max_price
+        FROM 2020_pro_type_gmv g LEFT JOIN 1_rays_product_type t
+        ON g.pro_type_id = t.ID
+        WHERE (g.year=2020 and g.month =5)
+        GROUP BY pro_type_id ORDER BY rate DESC) t;
+    </select>
+    <select id="getRcGMV" resultType="com.feng.su.entity.ReaderContentGMV">
+        SELECT
+        b.book_id ,
+        CASE
+        WHEN length(trim(b.book_name))>60 THEN
+        concat(substr(trim(b.book_name), 1,4),'*',substr(trim(b.book_name), -4))
+        WHEN length(trim(b.book_name))>42 THEN
+        concat(substr(trim(b.book_name),1,2),'*',substr(trim(b.book_name),-2))
+        WHEN length(trim(b.book_name))>21 THEN
+        concat(substr(trim(b.book_name), 1,2),'*',substr(trim(b.book_name), -2))
+        ELSE
+        concat(substr(trim(b.book_name), 1,1),'*',substr(trim(b.book_name), -1))
+        END AS  book_name,
+
+        f.TYPE_NAME book_type,
+        d.`NAME` agent_name,
+        c.adviser_id ,
+        if(LENGTH(trim(c.`NAME`))>6,concat(substr(trim(c.`NAME`), 1,1),'*',substr(trim(c.`NAME`), -1)),concat('*',substr(trim(c.`NAME`), -1)))   adviser_name,
+        IFNULL(f.groupgvm,0) reader_gmv,
+        CONCAT(TRUNCATE(IFNULL(f.groupgvm,0)/a.gmv*100,2),'%') reader_gmv_rate,
+        ifnull(TRUNCATE(IFNULL(f.groupgvm,0)/ if(IFNULL(g.PRINT_NUM,0)=0, b.print_num,IFNULL(g.PRINT_NUM,0) ),2),0) as reader_gmv_print_num,
+        (a.gmv-IFNULL(f.groupgvm,0)) content_gmv,
+        CONCAT(TRUNCATE((a.gmv-IFNULL(f.groupgvm,0))/a.gmv*100,2),'%') content_gmv_rate,
+        ifnull(TRUNCATE((a.gmv-IFNULL(f.groupgvm,0))/ if(IFNULL(g.PRINT_NUM,0)=0, b.print_num,IFNULL(g.PRINT_NUM,0)  ),2),0) as content_gmv_print_num,
+
+
+        if(IFNULL(g.PRINT_NUM,0)=0, b.print_num,(IFNULL(g.PRINT_NUM,0) ) ) print_num,
+        a.gmv ,
+        ifnull(TRUNCATE(a.gmv/ if((IFNULL(g.PRINT_NUM,0))=0, b.print_num,(IFNULL(g.PRINT_NUM,0) ) ),2),0) as gmv_print_num
+
+        from (
+        SELECT sum(gmv) gmv, book_id, ADVISER_ID from 2020_order_book where book_id > 0 and (year=2019 or month&lt;6) GROUP BY book_id ORDER BY gmv desc
+        ) a
+        LEFT JOIN 1_rays_book b on  a.book_id = b.book_id  and b.IS_MAIN_EDITOR = 1
+        LEFT JOIN 1_rays_adviser  c on b.ADVISER_ID = c.ADVISER_ID
+        LEFT JOIN 1_rays_agent d on c.AGENT_ID = d.AGENT_ID
+        LEFT JOIN (
+        SELECT book_id, sum(print_num) print_num from 2020_book_print_tmp_final GROUP BY book_id
+        ) g on a.book_id = g.book_id
+        left join
+        (select book_id,sum(gmv)groupgvm from 2020_order_group_book where (year=2019 or month&lt;6) group by book_id)f  on a.book_id = f.book_id
+        LEFT JOIN 1_rays_book_type f on b.book_type_id = f.id
+
+        order by a.gmv desc;
+    </select>
+
+    <select id="getRcGMVCount" resultType="java.lang.Integer">
+         SELECT
+        COUNT (1)
+
+        from (
+        SELECT
+        b.book_id ,
+        CASE
+        WHEN length(trim(b.book_name))>60 THEN
+        concat(substr(trim(b.book_name), 1,4),'*',substr(trim(b.book_name), -4))
+        WHEN length(trim(b.book_name))>42 THEN
+        concat(substr(trim(b.book_name),1,2),'*',substr(trim(b.book_name),-2))
+        WHEN length(trim(b.book_name))>21 THEN
+        concat(substr(trim(b.book_name), 1,2),'*',substr(trim(b.book_name), -2))
+        ELSE
+        concat(substr(trim(b.book_name), 1,1),'*',substr(trim(b.book_name), -1))
+        END AS  book_name,
+
+        f.TYPE_NAME book_type,
+        d.`NAME` agent_name,
+        c.adviser_id ,
+        if(LENGTH(trim(c.`NAME`))>6,concat(substr(trim(c.`NAME`), 1,1),'*',substr(trim(c.`NAME`), -1)),concat('*',substr(trim(c.`NAME`), -1)))   adviser_name,
+        IFNULL(f.groupgvm,0) reader_gmv,
+        CONCAT(TRUNCATE(IFNULL(f.groupgvm,0)/a.gmv*100,2),'%') reader_gmv_rate,
+        ifnull(TRUNCATE(IFNULL(f.groupgvm,0)/ if(IFNULL(g.PRINT_NUM,0)=0, b.print_num,IFNULL(g.PRINT_NUM,0) ),2),0) as reader_gmv_print_num,
+        (a.gmv-IFNULL(f.groupgvm,0)) content_gmv,
+        CONCAT(TRUNCATE((a.gmv-IFNULL(f.groupgvm,0))/a.gmv*100,2),'%') content_gmv_rate,
+        ifnull(TRUNCATE((a.gmv-IFNULL(f.groupgvm,0))/ if(IFNULL(g.PRINT_NUM,0)=0, b.print_num,IFNULL(g.PRINT_NUM,0)  ),2),0) as content_gmv_print_num,
+
+
+        if(IFNULL(g.PRINT_NUM,0)=0, b.print_num,(IFNULL(g.PRINT_NUM,0) ) ) print_num,
+        a.gmv ,
+        ifnull(TRUNCATE(a.gmv/ if((IFNULL(g.PRINT_NUM,0))=0, b.print_num,(IFNULL(g.PRINT_NUM,0) ) ),2),0) as gmv_print_num
+
+        from (
+        SELECT sum(gmv) gmv, book_id, ADVISER_ID from 2020_order_book where book_id > 0 and (year=2019 or month&lt;6) GROUP BY book_id ORDER BY gmv desc
+        ) a
+        LEFT JOIN 1_rays_book b on  a.book_id = b.book_id  and b.IS_MAIN_EDITOR = 1
+        LEFT JOIN 1_rays_adviser  c on b.ADVISER_ID = c.ADVISER_ID
+        LEFT JOIN 1_rays_agent d on c.AGENT_ID = d.AGENT_ID
+        LEFT JOIN (
+        SELECT book_id, sum(print_num) print_num from 2020_book_print_tmp_final GROUP BY book_id
+        ) g on a.book_id = g.book_id
+        left join
+        (select book_id,sum(gmv)groupgvm from 2020_order_group_book where (year=2019 or month&lt;6) group by book_id)f  on a.book_id = f.book_id
+        LEFT JOIN 1_rays_book_type f on b.book_type_id = f.id
+
+        order by a.gmv desc) t;
+    </select>
+    <!-- 查询订单-->
+    <select id="getOrderDetail" resultType="com.feng.su.entity.Order">
+        select * from orderform_item_202005 where id>=(select id from orderform_item_202005 order by id limit #{startIndex},1) limit #{pageSize}
+    </select>
+    <select id="getOrderDetailCount" resultType="java.lang.Integer">
+        select count(1) from orderform_item_202005
+    </select>
+</mapper>
